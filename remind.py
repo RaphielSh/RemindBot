@@ -41,19 +41,25 @@ def view_tasks(message):
 
 @bot.message_handler(commands=['add'])
 def add_task(message):
+    bot.send_message(message.chat.id, "Формат: DAY.MONTH HOUR:MIN TASK")
+    #Get user response
+    @bot.message_handler(func=lambda message: message.chat.id == message.chat.id)
+    def handle_resp(message):
+        resp = message.text #Need to move it to set_task()
     markup = types.InlineKeyboardMarkup(row_width=1)
     one_time = types.InlineKeyboardButton('Оповестить один раз', callback_data='one_time')
     repeat = types.InlineKeyboardButton('Повторять', callback_data='repeat')
     markup.add(one_time)
     markup.add(repeat)
     bot.send_message(message.chat.id, "Хотите сделать оповещение регулярным?", reply_markup=markup)
-    
+
 @bot.callback_query_handler(func=lambda call:True)
 def set_task(callback):
     with open(str(callback.chat.id)+".csv", mode='a') as file:
-        # write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         match callback.data:
             case 'one_time':
+                #write.writerow(0 or 1 +resp)
                 print()
             case 'repeat':
                 print()
