@@ -1,14 +1,19 @@
 from dotenv import load_dotenv
 import telebot
 from telebot import types
+from telebot.types import ReplyKeyboardRemove, CallbackQuery
+from telebot_calendar import Calendar, CallbackData, RUSSIAN_LANGUAGE
+import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
+import re
 import csv
+import pandas as pd
 
 load_dotenv()
 TG_TOKEN=os.getenv("TELEGRAM_TOKEN")
-CHAT_ID=os.getenv("CHAT_ID")
-
+calendar = Calendar(language=RUSSIAN_LANGUAGE)
+calendar_CB=CallbackData("calendar_1", "action", "year", "month", "day")
 bot = telebot.TeleBot(TG_TOKEN)
 
 @bot.message_handler(commands=['start'])
@@ -17,7 +22,7 @@ def send_welcome(message):
     bot.send_message(user_id, "Привет!")
     if(os.path.isfile(str(user_id)+".csv")):return
     f = open(str(message.chat.id)+".csv", "w")
-    f.write()
+    f.write("D,Date,Time,TODO\n")
     f.close()
 
 
@@ -33,36 +38,76 @@ def view_tasks(message):
     with open(str(message.chat.id)+".csv") as file:
         read = csv.reader(file, delimiter=',')
         for row in read:
-            if row[0] == 1:
-                bot.send_message(message.chat.id, "Каждый(-ую) "+row[1]+' в '+row[2]+' '+row[3])
-                continue
+            if not row[0] or row[1]=='Date':continue
             bot.send_message(message.chat.id, row[1]+' в '+row[2]+' '+row[3])
-            
+
 
 @bot.message_handler(commands=['add'])
-def add_task(message):
-    bot.send_message(message.chat.id, "Формат: DAY.MONTH HOUR:MIN TASK")
-    #Get user response
-    @bot.message_handler(func=lambda message: message.chat.id == message.chat.id)
-    def handle_resp(message):
-        resp = message.text #Need to move it to set_task()
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    one_time = types.InlineKeyboardButton('Оповестить один раз', callback_data='one_time')
-    repeat = types.InlineKeyboardButton('Повторять', callback_data='repeat')
-    markup.add(one_time)
-    markup.add(repeat)
-    bot.send_message(message.chat.id, "Хотите сделать оповещение регулярным?", reply_markup=markup)
+def set_task(message):
+    now = datetime.datetime.now()  # Get the current date
+    bot.send_message(
+        message.from_user.id,
+        "Выберите дату",
+        reply_markup=calendar.create_calendar(
+            name=calendar_CB.prefix,
+            year=now.year,
+            month=now.month,
+        ),
+    )
 
-@bot.callback_query_handler(func=lambda call:True)
-def set_task(callback):
-    with open(str(callback.chat.id)+".csv", mode='a') as file:
-        write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        match callback.data:
-            case 'one_time':
-                #write.writerow(0 or 1 +resp)
-                print()
-            case 'repeat':
-                print()
+@bot.callback_query_handler(func=lambda call: call.data.startswith(calendar_CB.prefix))
+def add_one_time(call: CallbackQuery):
+    name, action, year, month, day = call.data.split(calendar_CB.sep)
+    date = calendar.calendar_query_handler(
+        bot=bot, call=call, name=name, action=action, year=year, month=month, day=day
+    )
+    match action:
+        case 'DAY':
+            task_date = date.strftime('%d.%m.%Y')
+            #Write new row in csv
+            with open(str(call.from_user.id)+'.csv', mode='a') as file:
+                write = csv.writer(file, delimiter=',' , quotechar=' ', quoting=csv.QUOTE_NONE)
+                write.writerow(['ND',task_date,'TIME','TASK'])
+
+            msg = bot.send_message(
+                chat_id=call.from_user.id,
+                text=f"You have chosen {task_date}. В какое время нужно прислать напоминание?",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            bot.register_next_step_handler(msg, set_time)
+        case 'CANCEL':
+            bot.send_message(
+                chat_id=call.from_user.id,
+                text=f"Отмена",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+
+#Set time for new row
+def set_time(message):
+    file_name = str(message.chat.id)+'.csv'
+    with open(file_name, mode='r+') as file:
+        lines = file.readlines()
+        for i, line in enumerate(lines):
+            if line.startswith('ND'):
+                lines[i] = line.replace('TIME',message.text)
+        file.seek(0)
+        file.writelines(lines)
+    file.close()
+    msg = bot.send_message(message.chat.id, "О чем напомнить?")
+    bot.register_next_step_handler(msg, set_task_name)
+
+#Set task for new row
+def set_task_name(message):
+    file_name = str(message.chat.id)+'.csv'
+    with open(file_name, mode='r+') as file:
+        lines = file.readlines()
+        for i, line in enumerate(lines):
+            if line.startswith('ND'):
+                lines[i] = line.replace('TASK', message.text).replace('ND', 'D')
+                # lines[i] = line.replace('ND', 'D')
+        file.seek(0)
+        file.writelines(lines)
+    file.close()
 
 @bot.message_handler(commands=['delete'])
 def delete_task(message):
