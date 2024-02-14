@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import re
 import csv
-import pandas as pd
+#import pandas as pd
 
 load_dotenv()
 TG_TOKEN=os.getenv("TELEGRAM_TOKEN")
@@ -66,9 +66,9 @@ def add_one_time(call: CallbackQuery):
             task_date = date.strftime('%d.%m.%Y')
             #Write new row in csv
             with open(str(call.from_user.id)+'.csv', mode='a') as file:
-                write = csv.writer(file, delimiter=',' , quotechar=' ', quoting=csv.QUOTE_NONE)
-                write.writerow(['ND',task_date,'TIME','TASK'])
-
+                #write = csv.writer(file, delimiter=',' , quotechar=' ', quoting=csv.QUOTE_NONE)
+                #write.writerow(['ND',task_date,'TIME','TASK'])
+                file.write('ND ' + str(task_date) + ' TIME TASK\n')
             msg = bot.send_message(
                 chat_id=call.from_user.id,
                 text=f"You have chosen {task_date}. В какое время нужно прислать напоминание?",
